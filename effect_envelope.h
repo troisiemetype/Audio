@@ -61,11 +61,15 @@ public:
 		decay_count = milliseconds2count(milliseconds);
 		if (decay_count == 0) decay_count = 1;
 	}
+// sustain moved to cpp to enable changes when envelope is running
+	void sustain(float level);
+/*
 	void sustain(float level) {
 		if (level < 0.0) level = 0;
 		else if (level > 1.0) level = 1.0;
 		sustain_mult = level * 1073741824.0;
 	}
+*/
 	void release(float milliseconds) {
 		release_count = milliseconds2count(milliseconds);
 		if (release_count == 0) release_count = 1;
