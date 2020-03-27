@@ -189,8 +189,8 @@ void AudioSynthWaveform::update(void)
 
 void AudioSynthWaveformModulated::update(void)
 {
-	audio_block_t *block, *moddata, *shapedata;
-	int16_t *bp, *end;
+	audio_block_t *block, *moddata, *shapedata, *syncblock, *syncdata;
+	int16_t *bp, *end, *sip, *sop;
 	int32_t val1, val2;
 	int16_t magnitude15;
 	uint32_t i, ph, index, index2, scale, priorphase;
@@ -198,6 +198,15 @@ void AudioSynthWaveformModulated::update(void)
 
 	moddata = receiveReadOnly(0);
 	shapedata = receiveReadOnly(1);
+	syncdata = receiveReadOnly(2);
+
+	syncblock = allocate();
+	if (!syncblock) {
+		if (moddata) release(moddata);
+		if (shapedata) release(shapedata);
+		if (syncdata) release(syncdata);
+		return;
+	}
 
 	// Pre-compute the phase angle for every output sample of this update
 	ph = phase_accumulator;
@@ -205,7 +214,16 @@ void AudioSynthWaveformModulated::update(void)
 	if (moddata && modulation_type == 0) {
 		// Frequency Modulation
 		bp = moddata->data;
+		sip = syncdata->data;
+		sop = syncblock->data;
 		for (i=0; i < AUDIO_BLOCK_SAMPLES; i++) {
+			if(*sip++ == 1){
+				ph = 0;
+				phasedata[i] = ph;
+				*sop++ = 1;
+				continue;
+			}
+
 			int32_t n = (*bp++) * modulation_factor; // n is # of octaves to mod
 			int32_t ipart = n >> 27; // 4 integer bits
 			n &= 0x7FFFFFF;          // 27 fractional bits
@@ -235,27 +253,50 @@ void AudioSynthWaveformModulated::update(void)
 			} else {
 				ph += 0x7FFE0000;
 			}
+			if(ph < phasedata[i]){
+				*sop++ = 1;
+			} else {
+				*sop++ = 0;
+			}
 			phasedata[i] = ph;
 		}
 		release(moddata);
 	} else if (moddata) {
 		// Phase Modulation
 		bp = moddata->data;
+		sop = syncblock->data;
 		for (i=0; i < AUDIO_BLOCK_SAMPLES; i++) {
 			// more than +/- 180 deg shift by 32 bit overflow of "n"
 			uint32_t n = (uint16_t)(*bp++) * modulation_factor;
 			phasedata[i] = ph + n;
 			ph += inc;
+			if(ph < phasedata[i]){
+				*sop++ = 1;
+			} else {
+				*sop++ = 0;
+			}
 		}
 		release(moddata);
 	} else {
 		// No Modulation Input
+		sip = syncdata->data;
+		sop = syncblock->data;
 		for (i=0; i < AUDIO_BLOCK_SAMPLES; i++) {
+			if(*sip++ == 1) ph = 0;
+
+			if(ph < phasedata[i]){
+				*sop++ = 1;
+			} else {
+				*sop++ = 0;
+			}
+
 			phasedata[i] = ph;
 			ph += inc;
 		}
 	}
 	phase_accumulator = ph;
+
+	if(syncdata) release(syncdata);
 
 	// If the amplitude is zero, no output, but phase still increments properly
 	if (magnitude == 0) {
@@ -398,6 +439,8 @@ void AudioSynthWaveformModulated::update(void)
 		} while (bp < end);
 	}
 	if (shapedata) release(shapedata);
+	transmit(syncblock, 1);
+	release(syncblock);
 	transmit(block, 0);
 	release(block);
 }
