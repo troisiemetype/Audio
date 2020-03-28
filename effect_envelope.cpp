@@ -69,20 +69,6 @@ void AudioEffectEnvelope::noteOff(void)
 	__enable_irq();
 }
 
-void AudioEffectEnvelope::sustain(float level) {
-	if (level < 0.0) level = 0;
-	else if (level > 1.0) level = 1.0;
-	sustain_mult = level * 1073741824.0;
-	// implement live sustain modification
-	__disable_irq();
-	if(state == STATE_SUSTAIN){
-		mult_hires = sustain_mult;
-	} else if(state == STATE_DECAY){
-		inc_hires = (sustain_mult - mult_hires) / (int32_t)count;
-	}
-	__enable_irq();
-}
-
 void AudioEffectEnvelope::update(void)
 {
 	audio_block_t *block;
